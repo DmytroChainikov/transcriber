@@ -1,0 +1,34 @@
+# Файли середовища
+.env
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Логи
+*.log
+transcriber.log
+
+# Тестові файли
+*.tmp
+test_write.*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Аудіо файли (опціонально, якщо не хочете комітити тестові файли)
+*.mp3
+*.wav
+*.m4a
+*.aac
+*.ogg
+*.txt
