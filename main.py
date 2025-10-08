@@ -93,9 +93,9 @@ class AudioTranscriber:
 class AudioFileHandler(FileSystemEventHandler):
     """Обробник подій файлової системи для моніторингу нових аудіо файлів"""
     
-    def __init__(self, transcriber, output_folder, supported_formats, max_file_size):
+    def __init__(self, transcriber, folder, supported_formats, max_file_size):
         self.transcriber = transcriber
-        self.output_folder = output_folder
+        self.folder = folder  # Єдина папка для аудіо та транскриптів
         self.supported_formats = [fmt.lower() for fmt in supported_formats]
         self.max_file_size = max_file_size * 1024 * 1024  # Перетворення в байти
         self.processed_files = set()
@@ -123,6 +123,10 @@ class AudioFileHandler(FileSystemEventHandler):
             if file_extension not in self.supported_formats:
                 return
             
+            # Перевірка що це не текстовий файл транскрибації
+            if file_extension == '.txt':
+                return
+            
             # Перевірка розміру файлу
             file_size = os.path.getsize(file_path)
             if file_size > self.max_file_size:
@@ -131,6 +135,14 @@ class AudioFileHandler(FileSystemEventHandler):
             
             # Перевірка чи файл вже був оброблений
             if file_path in self.processed_files:
+                return
+                
+            # Перевірка чи транскрипт вже існує
+            base_name = Path(file_path).stem
+            transcript_file = os.path.join(self.folder, f"{base_name}.txt")
+            if os.path.exists(transcript_file):
+                logging.info(f"Транскрипт вже існує для: {base_name}")
+                self.processed_files.add(file_path)
                 return
             
             # Додання невеликої затримки щоб файл повністю записався
@@ -142,12 +154,8 @@ class AudioFileHandler(FileSystemEventHandler):
             transcript = self.transcriber.transcribe_audio(file_path)
             
             if transcript:
-                # Створення назви вихідного файлу
-                base_name = Path(file_path).stem
-                output_file = os.path.join(self.output_folder, f"{base_name}_transcript.txt")
-                
                 # Збереження транскрипту
-                self.transcriber.save_transcript(transcript, output_file)
+                self.transcriber.save_transcript(transcript, transcript_file)
                 
                 # Додавання до списку оброблених файлів
                 self.processed_files.add(file_path)
@@ -155,43 +163,52 @@ class AudioFileHandler(FileSystemEventHandler):
         except Exception as e:
             logging.error(f"Помилка при обробці файлу {file_path}: {str(e)}")
 
-def process_existing_files(audio_folder, transcriber, output_folder, supported_formats, max_file_size):
+def process_existing_files(folder, transcriber, supported_formats, max_file_size):
     """
     Обробка існуючих аудіо файлів у папці
     
     Args:
-        audio_folder (str): Папка з аудіо файлами
+        folder (str): Папка з аудіо файлами та для збереження транскриптів
         transcriber (AudioTranscriber): Екземпляр транскрибера
-        output_folder (str): Папка для збереження транскриптів
         supported_formats (list): Підтримувані формати файлів
         max_file_size (int): Максимальний розмір файлу в MB
     """
-    if not os.path.exists(audio_folder):
-        logging.warning(f"Папка {audio_folder} не існує")
+    if not os.path.exists(folder):
+        logging.warning(f"Папка {folder} не існує")
         return
     
     max_size_bytes = max_file_size * 1024 * 1024
     supported_formats = [fmt.lower() for fmt in supported_formats]
     
-    for root, dirs, files in os.walk(audio_folder):
-        for file in files:
-            file_path = os.path.join(root, file)
+    # Отримуємо всі файли в папці
+    all_files = os.listdir(folder)
+    
+    # Фільтруємо аудіо файли
+    audio_files = []
+    for file in all_files:
+        file_path = os.path.join(folder, file)
+        if os.path.isfile(file_path):
             file_extension = Path(file_path).suffix.lower()
             
             # Перевірка формату та розміру
             if (file_extension in supported_formats and 
                 os.path.getsize(file_path) <= max_size_bytes):
-                
-                # Перевірка чи транскрипт вже існує
-                base_name = Path(file_path).stem
-                output_file = os.path.join(output_folder, f"{base_name}_transcript.txt")
-                
-                if not os.path.exists(output_file):
-                    logging.info(f"Обробка існуючого файлу: {file_path}")
-                    
-                    transcript = transcriber.transcribe_audio(file_path)
-                    if transcript:
-                        transcriber.save_transcript(transcript, output_file)
+                audio_files.append(file_path)
+    
+    # Перевіряємо кожен аудіо файл на наявність транскрипції
+    for audio_file in audio_files:
+        base_name = Path(audio_file).stem
+        transcript_file = os.path.join(folder, f"{base_name}.txt")
+        
+        # Якщо транскрипт не існує - створюємо
+        if not os.path.exists(transcript_file):
+            logging.info(f"Обробка файлу без транскрипції: {audio_file}")
+            
+            transcript = transcriber.transcribe_audio(audio_file)
+            if transcript:
+                transcriber.save_transcript(transcript, transcript_file)
+        else:
+            logging.info(f"Транскрипт вже існує для: {base_name}")
 
 def load_config():
     """
@@ -205,8 +222,7 @@ def load_config():
     config = {
         'api_key': os.getenv('GEMINI_API_KEY'),
         'model': os.getenv('GEMINI_MODEL'),
-        'audio_folder': os.getenv('AUDIO_FOLDER'),
-        'output_folder': os.getenv('OUTPUT_FOLDER'),
+        'folder': os.getenv('AUDIO_FOLDER'),  # Тепер це єдина папка для аудіо та транскриптів
         'supported_formats': os.getenv('SUPPORTED_FORMATS', '.mp3,.wav,.m4a,.aac,.ogg').split(','),
         'max_file_size': int(os.getenv('MAX_FILE_SIZE_MB', 20))
     }
@@ -215,11 +231,8 @@ def load_config():
     if not config['api_key']:
         raise ValueError("GEMINI_API_KEY не знайдено в .env файлі")
     
-    if not config['audio_folder']:
+    if not config['folder']:
         raise ValueError("AUDIO_FOLDER не знайдено в .env файлі")
-    
-    if not config['output_folder']:
-        raise ValueError("OUTPUT_FOLDER не знайдено в .env файлі")
     
     return config
 
@@ -230,9 +243,8 @@ def main():
         config = load_config()
         logging.info("Конфігурацію завантажено успішно")
         
-        # Створення директорій якщо не існують
-        os.makedirs(config['audio_folder'], exist_ok=True)
-        os.makedirs(config['output_folder'], exist_ok=True)
+        # Створення директорії якщо не існує
+        os.makedirs(config['folder'], exist_ok=True)
         
         # Ініціалізація транскрибера
         transcriber = AudioTranscriber(config['api_key'], config['model'])
@@ -240,9 +252,8 @@ def main():
         # Обробка існуючих файлів
         logging.info("Початок обробки існуючих файлів...")
         process_existing_files(
-            config['audio_folder'],
+            config['folder'],
             transcriber,
-            config['output_folder'],
             config['supported_formats'],
             config['max_file_size']
         )
@@ -250,17 +261,17 @@ def main():
         # Налаштування моніторингу папки
         event_handler = AudioFileHandler(
             transcriber,
-            config['output_folder'],
+            config['folder'],
             config['supported_formats'],
             config['max_file_size']
         )
         
         observer = Observer()
-        observer.schedule(event_handler, config['audio_folder'], recursive=True)
+        observer.schedule(event_handler, config['folder'], recursive=True)
         
         # Запуск моніторингу
         observer.start()
-        logging.info(f"Розпочато моніторинг папки: {config['audio_folder']}")
+        logging.info(f"Розпочато моніторинг папки: {config['folder']}")
         logging.info("Натисніть Ctrl+C для зупинки програми")
         
         try:
