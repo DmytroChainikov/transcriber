@@ -10,9 +10,17 @@ __pycache__/
 *.log
 transcriber.log
 
-# Тестові файли
+# Тестові файли та документи
 *.tmp
-test_write.*
+test_*.py
+*_demo.py
+example_*.py
+*test*.py
+FINAL_*.md
+USER_GUIDE*.md
+BUG_FIX*.md
+API_OPTIMIZATION*.md
+ENHANCED_*.md
 
 # IDE
 .vscode/
