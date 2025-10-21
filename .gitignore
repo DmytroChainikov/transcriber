@@ -1,5 +1,7 @@
 # Файли середовища
 .env
+.env.local
+.env.*.local
 venv/
 __pycache__/
 *.pyc
@@ -9,6 +11,28 @@ __pycache__/
 # Логи
 *.log
 transcriber.log
+
+# Історія оброблених файлів
+processed_files*.json
+
+# Локальні транскрипти
+transcripts/
+
+# Credentials
+credentials/
+**/service-account*.json
+gen-lang-client*.json
+
+# Legacy локальні файли (не використовуються в Google режимі)
+excel_reader.py
+excel_writer.py
+file_handler.py
+utils.py
+fields_config.py
+audio_files/
+processed_files/
+excel_output/
+*.xlsx
 
 # Тестові файли та документи
 *.tmp
@@ -21,6 +45,7 @@ USER_GUIDE*.md
 BUG_FIX*.md
 API_OPTIMIZATION*.md
 ENHANCED_*.md
+UPDATE_SUMMARY.md
 
 # IDE
 .vscode/
